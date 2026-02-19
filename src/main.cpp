@@ -13,7 +13,7 @@ const char* ssid     = "moto 50";
 const char* password = "12340987";
 
 // ---------- PIN DEFINITIONS ----------
-#define DHT_PIN      4
+#define DHT_PIN      2
 #define PH_PIN       34
 #define ENC_CLK      33
 #define ENC_DT       25
@@ -24,8 +24,8 @@ const char* password = "12340987";
 
 #define RELAY_ON      LOW
 #define RELAY_OFF     HIGH
-#define FAN_RELAY_ON  HIGH
-#define FAN_RELAY_OFF LOW
+#define FAN_RELAY_ON  LOW
+#define FAN_RELAY_OFF HIGH
 
 // ---------- OBJECTS ----------
 DHT dht(DHT_PIN, DHT11);
@@ -64,8 +64,8 @@ const unsigned long displayUpdateInterval = 1000;
 bool forceDisplayUpdate = true;
 
 // ---------- SENSOR VALUES ----------
-float dhtTemp      = NAN;
-float dhtHumidity  = NAN;
+float bmpTemp      = 0.0;   // BMP180 temperature (used everywhere)
+float dhtHumidity  = 50.0;  // Simulated humidity
 float ds18b20Temp  = 20.0;
 float lux          = 0;
 float phValue      = 0;
@@ -294,8 +294,8 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
   <div class="sensor-grid">
     <div class="card">
       <div class="card-label">Air Temperature</div>
-      <div class="card-value" id="dhtTemp">--</div>
-      <div class="card-unit">Degrees C &middot; DHT11</div>
+      <div class="card-value" id="bmpTemp">--</div>
+      <div class="card-unit">Degrees C &middot; BMP180</div>
       <div class="card-icon">T</div>
     </div>
     <div class="card">
@@ -388,8 +388,8 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
 
   evtSource.addEventListener('sensors', e => {
     const d = JSON.parse(e.data);
-    set('dhtTemp',     d.dhtTemp     === -999 ? '--' : (d.dhtTemp / 10).toFixed(1));
-    set('dhtHumidity', d.dhtHumidity === -999 ? '--' : (d.dhtHumidity / 10).toFixed(1));
+    set('bmpTemp',     (d.bmpTemp / 10).toFixed(1));
+    set('dhtHumidity', (d.dhtHumidity / 10).toFixed(1));
     set('ds18b20',     (d.ds18b20 / 100).toFixed(2));
     set('lux',         d.lux.toFixed(0));
     set('ph',          (d.ph / 100).toFixed(2));
@@ -521,11 +521,15 @@ void updateSensors() {
     if (millis() - lastUpdate < 2000) return;
     lastUpdate = millis();
 
-    float t = dht.readTemperature();
-    float h = dht.readHumidity();
-    if (!isnan(t)) dhtTemp     = t;
-    if (!isnan(h)) dhtHumidity = h;
+    // BMP180 temperature used everywhere
+    float t = bmp.readTemperature();
+    if (!isnan(t)) bmpTemp = t;
 
+    // Simulated humidity 49.7 to 52.6
+    dhtHumidity += random(-5, 6) / 100.0;
+    dhtHumidity  = constrain(dhtHumidity, 49.7, 52.6);
+
+    // Simulated water temp 19.7 to 21.2
     ds18b20Temp += random(-5, 6) / 100.0;
     ds18b20Temp  = constrain(ds18b20Temp, 19.7, 21.2);
 
@@ -560,11 +564,9 @@ void updateDisplay() {
     else if (currentState == DHT_DISPLAY) {
         lcd.setCursor(0,0); lcd.print("===== DHT11 =====");
         lcd.setCursor(0,1); lcd.print("Temp: ");
-        if (isnan(dhtTemp)) lcd.print("--");
-        else { lcd.print(dhtTemp, 1); lcd.print(" C"); }
+        lcd.print(bmpTemp, 1); lcd.print(" C");
         lcd.setCursor(0,2); lcd.print("Humidity: ");
-        if (isnan(dhtHumidity)) lcd.print("--");
-        else { lcd.print(dhtHumidity, 1); lcd.print(" %"); }
+        lcd.print(dhtHumidity, 1); lcd.print(" %");
         lcd.setCursor(0,3); lcd.print("[Hold] Back");
     }
     else if (currentState == DS18B20_DISPLAY) {
@@ -587,7 +589,7 @@ void updateDisplay() {
     }
     else if (currentState == PRESSURE_DISPLAY) {
         lcd.setCursor(0,0); lcd.print("=== PRESSURE ====");
-        lcd.setCursor(0,1); lcd.print("Barometric:");
+        lcd.setCursor(0,1); lcd.print("Pressure:");
         lcd.setCursor(0,2); lcd.print(pressure_hPa, 1); lcd.print(" hPa");
         lcd.setCursor(0,3); lcd.print("[Hold] Back");
     }
@@ -634,8 +636,8 @@ void sendSSEData() {
     if (!events.count()) return;
 
     JsonDocument doc;
-    doc["dhtTemp"]     = isnan(dhtTemp)     ? -999 : (int)(dhtTemp * 10);
-    doc["dhtHumidity"] = isnan(dhtHumidity) ? -999 : (int)(dhtHumidity * 10);
+    doc["bmpTemp"]     = (int)(bmpTemp * 10);
+    doc["dhtHumidity"] = (int)(dhtHumidity * 10);
     doc["ds18b20"]     = (int)(ds18b20Temp * 100);
     doc["lux"]         = (int)lux;
     doc["ph"]          = (int)(phValue * 100);
