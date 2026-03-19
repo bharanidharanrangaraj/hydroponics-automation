@@ -68,7 +68,7 @@ float bmpTemp      = 0.0;   // BMP180 temperature (used everywhere)
 float dhtHumidity  = 50.0;  // Simulated humidity
 float ds18b20Temp  = 20.0;
 float lux          = 0;
-float phValue      = 0;
+float phValue      = 5.85;  // Simulated pH (centre of 5.5–6.2)
 float pressure_hPa = 0;
 
 // ---------- ENCODER ----------
@@ -473,10 +473,16 @@ void displayWelcome() {
 void handleUpButton() {
     if (currentState == MAIN_MENU)       { if (--menuIndex < 0)      menuIndex = 5; }
     else if (currentState == RELAY_MENU) { if (--relayMenuIndex < 0) relayMenuIndex = 3; }
+    else if (currentState == MOTOR_SETTINGS) { motorAutoMode = false; setMotorRelay(!motorState); }
+    else if (currentState == LIGHT_CONTROL)  { setLightRelay(!lightState); }
+    else if (currentState == FAN_CONTROL)    { fanAutoMode = false; setFanRelay(!fanState); }
 }
 void handleDownButton() {
     if (currentState == MAIN_MENU)       { if (++menuIndex > 5)      menuIndex = 0; }
     else if (currentState == RELAY_MENU) { if (++relayMenuIndex > 3) relayMenuIndex = 0; }
+    else if (currentState == MOTOR_SETTINGS) { motorAutoMode = false; setMotorRelay(!motorState); }
+    else if (currentState == LIGHT_CONTROL)  { setLightRelay(!lightState); }
+    else if (currentState == FAN_CONTROL)    { fanAutoMode = false; setFanRelay(!fanState); }
 }
 void handleOkButton() {
     if (currentState == MAIN_MENU) {
@@ -491,11 +497,18 @@ void handleOkButton() {
         else if (relayMenuIndex == 1) currentState = LIGHT_CONTROL;
         else if (relayMenuIndex == 2) currentState = FAN_CONTROL;
         else                          currentState = MAIN_MENU;
+    } else if (currentState == MOTOR_SETTINGS || currentState == LIGHT_CONTROL || currentState == FAN_CONTROL) {
+        currentState = RELAY_MENU;
     } else {
         currentState = MAIN_MENU;
     }
 }
-void handleBackButton() { if (currentState != MAIN_MENU) currentState = MAIN_MENU; }
+void handleBackButton() {
+    if (currentState == MOTOR_SETTINGS || currentState == LIGHT_CONTROL || currentState == FAN_CONTROL)
+        currentState = RELAY_MENU;
+    else if (currentState != MAIN_MENU)
+        currentState = MAIN_MENU;
+}
 
 void handleEncoder() {
     int pos   = encoderPos;
@@ -534,8 +547,9 @@ void updateSensors() {
     ds18b20Temp  = constrain(ds18b20Temp, 19.7, 21.2);
 
     lux          = lightMeter.readLightLevel();
-    int raw      = analogRead(PH_PIN);
-    phValue      = map(raw, 0, 4095, 0, 1400) / 100.0;
+    // Simulated pH: gradual random drift within 5.5 – 6.2
+    phValue     += random(-3, 4) / 100.0;
+    phValue      = constrain(phValue, 5.5, 6.2);
     pressure_hPa = bmp.readPressure() / 100.0;
 }
 
@@ -552,8 +566,8 @@ void updateDisplay() {
     forceDisplayUpdate = false;
 
     if (currentState == MAIN_MENU) {
-        const char* items[] = {"DHT11","DS18B20","BH1750","pH Sensor","Pressure","Relay"};
-        lcd.setCursor(0,0); lcd.print("==== MAIN MENU ====");
+        const char* items[] = {"Temp & Humidity","Water Temp","Light Intensity","pH Sensor","Pressure","Controls"};
+        lcd.setCursor(0,0); lcd.print("     MAIN MENU     ");
         for (int i = 0; i < 3; i++) {
             int idx = (menuIndex + i - 1 + 6) % 6;
             lcd.setCursor(0, i+1);
@@ -562,40 +576,35 @@ void updateDisplay() {
         }
     }
     else if (currentState == DHT_DISPLAY) {
-        lcd.setCursor(0,0); lcd.print("===== DHT11 =====");
+        lcd.setCursor(0,0); lcd.print("      DHT11      ");
         lcd.setCursor(0,1); lcd.print("Temp: ");
         lcd.print(bmpTemp, 1); lcd.print(" C");
         lcd.setCursor(0,2); lcd.print("Humidity: ");
         lcd.print(dhtHumidity, 1); lcd.print(" %");
-        lcd.setCursor(0,3); lcd.print("[Hold] Back");
     }
     else if (currentState == DS18B20_DISPLAY) {
-        lcd.setCursor(0,0); lcd.print("==== DS18B20 ====");
+        lcd.setCursor(0,0); lcd.print(" Water Temp");
         lcd.setCursor(0,1); lcd.print("Water Temp:");
         lcd.setCursor(0,2); lcd.print(ds18b20Temp, 2); lcd.print(" C");
-        lcd.setCursor(0,3); lcd.print("[Hold] Back");
     }
     else if (currentState == BH1750_DISPLAY) {
-        lcd.setCursor(0,0); lcd.print("==== BH1750 =====");
+        lcd.setCursor(0,0); lcd.print(" Light Intensity");
         lcd.setCursor(0,1); lcd.print("Light Intensity:");
         lcd.setCursor(0,2); lcd.print(lux, 1); lcd.print(" lux");
-        lcd.setCursor(0,3); lcd.print("[Hold] Back");
     }
     else if (currentState == PH_DISPLAY) {
-        lcd.setCursor(0,0); lcd.print("==== pH SENSOR ==");
+        lcd.setCursor(0,0); lcd.print("     pH SENSOR");
         lcd.setCursor(0,1); lcd.print("pH Value:");
         lcd.setCursor(0,2); lcd.print(phValue, 2);
-        lcd.setCursor(0,3); lcd.print("[Hold] Back");
     }
     else if (currentState == PRESSURE_DISPLAY) {
-        lcd.setCursor(0,0); lcd.print("=== PRESSURE ====");
+        lcd.setCursor(0,0); lcd.print("   PRESSURE");
         lcd.setCursor(0,1); lcd.print("Pressure:");
         lcd.setCursor(0,2); lcd.print(pressure_hPa, 1); lcd.print(" hPa");
-        lcd.setCursor(0,3); lcd.print("[Hold] Back");
     }
     else if (currentState == RELAY_MENU) {
         const char* items[] = {"Motor","Light","Fan","Back"};
-        lcd.setCursor(0,0); lcd.print("==== RELAYS ====");
+        lcd.setCursor(0,0); lcd.print(" Controls");
         for (int i = 0; i < 3; i++) {
             int idx = (relayMenuIndex + i - 1 + 4) % 4;
             lcd.setCursor(0, i+1);
@@ -604,26 +613,23 @@ void updateDisplay() {
         }
     }
     else if (currentState == MOTOR_SETTINGS) {
-        lcd.setCursor(0,0); lcd.print("=== WATER PUMP ==");
+        lcd.setCursor(0,0); lcd.print("    WATER PUMP");
         lcd.setCursor(0,1); lcd.print("State: ");
         lcd.print(motorState ? "ON " : "OFF");
         lcd.setCursor(0,2); lcd.print("Mode: ");
         lcd.print(motorAutoMode ? "AUTO  " : "MANUAL");
-        lcd.setCursor(0,3); lcd.print("[Hold] Back");
     }
     else if (currentState == LIGHT_CONTROL) {
-        lcd.setCursor(0,0); lcd.print("=== GROW LIGHT ==");
+        lcd.setCursor(0,0); lcd.print("    GROW LIGHT");
         lcd.setCursor(0,1); lcd.print("State: ");
         lcd.print(lightState ? "ON " : "OFF");
-        lcd.setCursor(0,3); lcd.print("[Hold] Back");
     }
     else if (currentState == FAN_CONTROL) {
-        lcd.setCursor(0,0); lcd.print("= VENTIL. FAN ===");
+        lcd.setCursor(0,0); lcd.print("   VENTIL. FAN");
         lcd.setCursor(0,1); lcd.print("State: ");
         lcd.print(fanState ? "ON " : "OFF");
         lcd.setCursor(0,2); lcd.print("Mode: ");
         lcd.print(fanAutoMode ? "AUTO  " : "MANUAL");
-        lcd.setCursor(0,3); lcd.print("[Hold] Back");
     }
 }
 
